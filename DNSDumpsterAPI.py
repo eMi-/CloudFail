@@ -36,17 +36,18 @@ class DNSDumpsterAPI(object):
             print('[verbose] %s' % s)
 
     def _empty_result(self, domain):
-    return {
-        'domain': domain,
-        'dns_records': {
-            'dns': [],
-            'mx': [],
-            'txt': [],
-            'host': []
-        },
-        'image_data': None,
-        'xls_data': None
-    }
+        """Return an empty structured result when DNSDumpster fails."""
+        return {
+            'domain': domain,
+            'dns_records': {
+                'dns': [],
+                'mx': [],
+                'txt': [],
+                'host': []
+            },
+            'image_data': None,
+            'xls_data': None
+        }
 
     def retrieve_results(self, table):
         res = []
@@ -73,7 +74,7 @@ class DNSDumpsterAPI(object):
                         'country': country,
                         'header': header}
                 res.append(data)
-            except:
+            except Exception:
                 pass
         return res
 
@@ -82,7 +83,7 @@ class DNSDumpsterAPI(object):
         for td in table.findAll('td'):
             res.append(td.text)
         return res
-    
+
     def search(self, domain):
         dnsdumpster_url = 'https://dnsdumpster.com/'
 
@@ -111,7 +112,6 @@ class DNSDumpsterAPI(object):
                 csrf_middleware = m.group(1)
 
         if not csrf_middleware:
-            # Clearer error instead of IndexError
             print(
                 "DNSDumpster: CSRF token not found (site may be blocking or serving a captcha).",
                 file=sys.stderr
@@ -142,31 +142,32 @@ class DNSDumpsterAPI(object):
         soup = BeautifulSoup(req.content, 'html.parser')
         tables = soup.findAll('table')
 
-        # Defensive: ensure we actually got the expected tables
         if len(tables) < 4:
             print("DNSDumpster: unexpected response format (tables missing).", file=sys.stderr)
             return self._empty_result(domain)
 
-        res = {}
-        res['domain'] = domain
-        res['dns_records'] = {}
-        res['dns_records']['dns'] = self.retrieve_results(tables[0])
-        res['dns_records']['mx'] = self.retrieve_results(tables[1])
-        res['dns_records']['txt'] = self.retrieve_txt_record(tables[2])
-        res['dns_records']['host'] = self.retrieve_results(tables[3])
+        res = {
+            'domain': domain,
+            'dns_records': {
+                'dns': self.retrieve_results(tables[0]),
+                'mx': self.retrieve_results(tables[1]),
+                'txt': self.retrieve_txt_record(tables[2]),
+                'host': self.retrieve_results(tables[3])
+            }
+        }
 
         # Network mapping image
         try:
-            tmp_url = 'https://dnsdumpster.com/static/map/{}.png'.format(domain)
+            tmp_url = f'https://dnsdumpster.com/static/map/{domain}.png'
             image_data = base64.b64encode(self.session.get(tmp_url, timeout=20).content)
-        except:
+        except Exception:
             image_data = None
         finally:
             res['image_data'] = image_data
 
-        # XLS hosts (e.g., example.com-201606131255.xlsx)
+        # XLS hosts
         try:
-            pattern = r'/static/xls/' + re.escape(domain) + r'-[0-9]{12}\.xlsx'
+            pattern = rf'/static/xls/{re.escape(domain)}-[0-9]{{12}}\.xlsx'
             m = re.findall(pattern, req.content.decode('utf-8', errors='ignore'))
             if m:
                 xls_url = 'https://dnsdumpster.com' + m[0]
