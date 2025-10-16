@@ -35,6 +35,19 @@ class DNSDumpsterAPI(object):
         if self.verbose:
             print('[verbose] %s' % s)
 
+    def _empty_result(self, domain):
+    return {
+        'domain': domain,
+        'dns_records': {
+            'dns': [],
+            'mx': [],
+            'txt': [],
+            'host': []
+        },
+        'image_data': None,
+        'xls_data': None
+    }
+
     def retrieve_results(self, table):
         res = []
         trs = table.findAll('tr')
@@ -69,7 +82,7 @@ class DNSDumpsterAPI(object):
         for td in table.findAll('td'):
             res.append(td.text)
         return res
-
+    
     def search(self, domain):
         dnsdumpster_url = 'https://dnsdumpster.com/'
 
@@ -79,7 +92,7 @@ class DNSDumpsterAPI(object):
             req.raise_for_status()
         except requests.RequestException as e:
             print("DNSDumpster GET failed: %s" % e, file=sys.stderr)
-            return []
+            return self._empty_result(domain)
 
         soup = BeautifulSoup(req.content, 'html.parser')
 
@@ -103,7 +116,7 @@ class DNSDumpsterAPI(object):
                 "DNSDumpster: CSRF token not found (site may be blocking or serving a captcha).",
                 file=sys.stderr
             )
-            return []
+            return self._empty_result(domain)
 
         self.display_message('Retrieved token: %s' % csrf_middleware)
 
@@ -120,11 +133,11 @@ class DNSDumpsterAPI(object):
             req.raise_for_status()
         except requests.RequestException as e:
             print("DNSDumpster POST failed: %s" % e, file=sys.stderr)
-            return []
+            return self._empty_result(domain)
 
         if 'There was an error getting results' in req.content.decode('utf-8', errors='ignore'):
             print("There was an error getting results", file=sys.stderr)
-            return []
+            return self._empty_result(domain)
 
         soup = BeautifulSoup(req.content, 'html.parser')
         tables = soup.findAll('table')
@@ -132,7 +145,7 @@ class DNSDumpsterAPI(object):
         # Defensive: ensure we actually got the expected tables
         if len(tables) < 4:
             print("DNSDumpster: unexpected response format (tables missing).", file=sys.stderr)
-            return []
+            return self._empty_result(domain)
 
         res = {}
         res['domain'] = domain
